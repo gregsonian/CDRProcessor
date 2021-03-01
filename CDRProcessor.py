@@ -1,5 +1,6 @@
 '''
-Gregory Schilsson
+The Johns Hopkins University Applied Physics Laboratory
+Author: Gregory Schilsson
 CDRProcessor
 
 Class to process CDR files.
