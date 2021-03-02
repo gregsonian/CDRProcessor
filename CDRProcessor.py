@@ -9,17 +9,21 @@ Class to process CDR files.
 import os
 import csv
 import json
+import argparse
 
 
 class CDRProcessor(object):
 
+    KEY_FILES = 'files'
     KEY_DATA = 'data'
     KEY_SCHEMAS = 'schemas'
 
-    def __init__(self, dir_path: str):
+    def __init__(self, dir_path: str, trim_empty_fields: bool = False):
         self.__dir_path = dir_path
+        self.__trim_empty_fields = trim_empty_fields
         self.__data_schema = {}
         self.__data_list = []
+        self.__file_list = []
 
     def __repr__(self):
         return ('CDRProcessor looking at {dir_path}. Contains '
@@ -45,7 +49,7 @@ class CDRProcessor(object):
         for item in in_dict.items():
             key, value = item[0], item[1]
             value_type = current_schema[key]
-            if value in [0, '0', '']:
+            if self.__trim_empty_fields and value in [0, '0', '']:
                 continue
             if 'INTEGER' in value_type:
                 try:
@@ -99,6 +103,7 @@ class CDRProcessor(object):
                 except UnicodeDecodeError as ud_err:
                     print('{line_num}: {ud_err}'
                           .format(line_num=reader.line_num, ud_err=ud_err))
+            self.__file_list.append(file_name)
 
     def get_data(self) -> dict:
         '''
@@ -118,6 +123,8 @@ class CDRProcessor(object):
             if schema_key not in data_dict[CDRProcessor.KEY_SCHEMAS].keys():
                 data_dict[CDRProcessor.KEY_SCHEMAS][schema_key] = \
                     self.__data_schema[schema_key]
+        if CDRProcessor.KEY_FILES not in data_dict.keys():
+            data_dict[CDRProcessor.KEY_FILES] = self.__file_list
         return data_dict
 
     def write_json_file(self) -> None:
@@ -126,13 +133,31 @@ class CDRProcessor(object):
         '''
         # write the json file
         data_dict = self.get_data()
-        json_out_file_path = os.path.join(self.__dir_path, 'out.json')
+        out_file_name = 'out.json'
+        if self.__trim_empty_fields:
+            out_file_name = 'out_trimmed.json'
+        json_out_file_path = os.path.join(self.__dir_path, out_file_name)
         with open(json_out_file_path, 'w') as out_file:
             json.dump(data_dict, out_file)
 
 
 if __name__ == '__main__':
-    current_path = os.getcwd()
-    processor = CDRProcessor(current_path)
-    processor.process_directory()
-    processor.write_json_file()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', action='store', dest='dir_path',
+                        type=str, required=False, default='')
+    parser.add_argument('-t', action='store', dest='trim_empty_fields',
+                        type=bool, required=False, default=False)
+    in_args = parser.parse_args()
+    dir_path, trim_empty_fields = in_args.dir_path, in_args.trim_empty_fields
+    if dir_path:
+        processor = \
+            CDRProcessor(dir_path=dir_path,
+                         trim_empty_fields=trim_empty_fields)
+    else:
+        # Unit tests
+        current_path = os.getcwd()
+
+        # Untrimmed data
+        processor = CDRProcessor(current_path)
+        processor.process_directory()
+        processor.write_json_file()
