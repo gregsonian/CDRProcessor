@@ -1,14 +1,17 @@
 '''
 The Johns Hopkins University Applied Physics Laboratory
 Author: Gregory Schilsson
-CDRProcessor
+CDRProcessor: Class to process CDR files.
 
-Class to process CDR files.
+Arguments
+-d - Set the read directory
+-t - Indicate whether to trim empty fields
 '''
 
 import os
 import csv
 import json
+import datetime
 import argparse
 
 
@@ -24,6 +27,7 @@ class CDRProcessor(object):
         self.__data_schema = {}
         self.__data_list = []
         self.__file_list = []
+        self.__timestamp = ''
 
     def __repr__(self):
         return ('CDRProcessor looking at {dir_path}. Contains '
@@ -74,6 +78,25 @@ class CDRProcessor(object):
             pass
         return record_type
 
+    def get_timestamp(self, re_init: bool = False) -> str:
+        '''
+        Returns a timestamp for use with output file naming.
+        '''
+
+        utcnow = datetime.datetime.now(datetime.timezone.utc)
+        if re_init or not self.__timestamp:
+            self.__timestamp = \
+                "{YYYY}{MM:02d}{DD:02d}_{HH:02d}{mm:02d}{ss:02d}" \
+                .format(
+                    YYYY=utcnow.year,
+                    MM=utcnow.month,
+                    DD=utcnow.day,
+                    HH=utcnow.hour,
+                    mm=utcnow.minute,
+                    ss=utcnow.second
+                )
+        return self.__timestamp
+
     def process_directory(self) -> None:
         '''
         Tries to process the files in specified directory into Python objects
@@ -85,7 +108,7 @@ class CDRProcessor(object):
 
         for file_name in file_list:
             record_type = self.__get_record_type(file_name)
-            abs_file_path = os.path.join(current_path, file_name)
+            abs_file_path = os.path.join(self.__dir_path, file_name)
             with open(abs_file_path, 'r') as in_file:
                 csv_reader = csv.reader(in_file)
                 header_name_list = next(csv_reader)
@@ -123,22 +146,49 @@ class CDRProcessor(object):
             if schema_key not in data_dict[CDRProcessor.KEY_SCHEMAS].keys():
                 data_dict[CDRProcessor.KEY_SCHEMAS][schema_key] = \
                     self.__data_schema[schema_key]
-        if CDRProcessor.KEY_FILES not in data_dict.keys():
-            data_dict[CDRProcessor.KEY_FILES] = self.__file_list
         return data_dict
 
-    def write_json_file(self) -> None:
+    def write_json_data(self) -> None:
         '''
         Writes the complete data to a json file. Always overwrites
         '''
-        # write the json file
-        data_dict = self.get_data()
-        out_file_name = 'out.json'
+        # write the data json file
+        timestamp = self.get_timestamp()
+        data_file_name = 'data-{ts}.json'.format(ts=timestamp)
         if self.__trim_empty_fields:
-            out_file_name = 'out_trimmed.json'
-        json_out_file_path = os.path.join(self.__dir_path, out_file_name)
-        with open(json_out_file_path, 'w') as out_file:
-            json.dump(data_dict, out_file)
+            data_file_name = 'data-{ts}-trimmed.json'.format(ts=timestamp)
+        json_out_file_path = os.path.join(self.__dir_path, data_file_name)
+        data_list = self.__data_list
+        if data_list:
+            with open(json_out_file_path, 'w') as data_out_file:
+                json.dump(data_list, data_out_file)
+
+    def write_json_schemas(self) -> None:
+        '''
+        Writes the schemas to a json file. Always overwrites
+        '''
+        # write the schema json file
+        timestamp = self.get_timestamp()
+        schema_file_name = 'schemas-{ts}.json'.format(ts=timestamp)
+        if self.__trim_empty_fields:
+            schema_file_name = 'schemas-{ts}-trimmed.json'.format(ts=timestamp)
+        schema_out_file_path = os.path.join(self.__dir_path, schema_file_name)
+        schema_list = self.__data_schema
+        if schema_list:
+            with open(schema_out_file_path, 'w') as schema_out_file:
+                json.dump(schema_list, schema_out_file)
+
+    def write_file_names(self) -> None:
+        '''
+        Writes all files processed with this timestamp
+        '''
+        if self.__file_list:
+            timestamp = self.get_timestamp()
+            list_file_name = 'files-{ts}.log'.format(ts=timestamp)
+            out_file_path = os.path.join(self.__dir_path, list_file_name)
+            with open(out_file_path, 'w') as files_out_file:
+                for file_name in self.__file_list:
+                    print(file_name, file=files_out_file)
 
 
 if __name__ == '__main__':
@@ -153,11 +203,11 @@ if __name__ == '__main__':
         processor = \
             CDRProcessor(dir_path=dir_path,
                          trim_empty_fields=trim_empty_fields)
-    else:
-        # Unit tests
-        current_path = os.getcwd()
-
-        # Untrimmed data
-        processor = CDRProcessor(current_path)
         processor.process_directory()
-        processor.write_json_file()
+        processor.write_json_data()
+        processor.write_json_schemas()
+        processor.write_file_names()
+    else:
+        current_dir = os.getcwd()
+        processor = CDRProcessor(dir_path=current_dir)
+        print(processor)
